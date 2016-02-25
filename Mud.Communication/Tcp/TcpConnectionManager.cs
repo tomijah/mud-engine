@@ -2,15 +2,15 @@
 {
     using Common.Communication;
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Net;
     using System.Net.Sockets;
 
     public class TcpConnectionManager: IConnectionManager
     {
-        private readonly List<TcpConnection> connections = new List<TcpConnection>();
-
-        private readonly object lockVar = new object();
+        private readonly ConcurrentDictionary<Guid, TcpConnection> connections =
+            new ConcurrentDictionary<Guid, TcpConnection>();
 
         private bool started;
 
@@ -51,7 +51,7 @@
 
         public void Broadcast(string message)
         {
-            var tempConnections = new List<TcpConnection>(this.connections);
+            var tempConnections = new List<TcpConnection>(this.connections.Values);
             foreach (TcpConnection conn in tempConnections)
             {
                 conn.Send(message);
@@ -60,12 +60,9 @@
 
         public void Stop()
         {
-            if (this.serverSocket != null)
-            {
-                this.serverSocket.Close();
-            }
+            this.serverSocket?.Close();
 
-            var tempConnections = new List<TcpConnection>(this.connections);
+            var tempConnections = new List<TcpConnection>(this.connections.Values);
             foreach (TcpConnection conn in tempConnections)
             {
                 conn.Disconnect();
@@ -81,15 +78,9 @@
                 conn.Disconnected += this.OnClientDisconnected;
                 conn.StartListen();
 
-                lock (this.lockVar)
-                {
-                    this.connections.Add(conn);
-                }
+                this.connections.TryAdd(conn.Id, conn);
 
-                if (this.UserConnected != null)
-                {
-                    this.UserConnected(conn);
-                }
+                this.UserConnected?.Invoke(conn);
 
                 this.serverSocket.BeginAccept(this.OnClientConnect, null);
             }
@@ -102,15 +93,9 @@
 
         private void OnClientDisconnected(IConnection sender)
         {
-            lock (this.lockVar)
-            {
-                this.connections.Remove((TcpConnection)sender);
-            }
-
-            if (this.UserDisconnected != null)
-            {
-                this.UserDisconnected(sender);
-            }
+            TcpConnection removed;
+            this.connections.TryRemove(sender.Id, out removed);
+            this.UserDisconnected?.Invoke(sender);
         }
     }
 }

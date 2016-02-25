@@ -79,10 +79,7 @@
 
         private void OnMessage(string message)
         {
-            if (this.MessageReceived != null)
-            {
-                this.MessageReceived(this, message);
-            }
+            this.MessageReceived?.Invoke(this, message);
         }
 
         private void OnDataReceived(IAsyncResult asyncResult)
@@ -151,10 +148,7 @@
             if (this.connected)
             {
                 this.connected = false;
-                if (this.Disconnected != null)
-                {
-                    this.Disconnected(this);
-                }
+                this.Disconnected?.Invoke(this);
             }
         }
     }

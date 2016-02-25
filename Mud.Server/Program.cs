@@ -20,7 +20,7 @@
                     break;
                 }
 
-                connections.Broadcast(message);
+                connections.Broadcast(message + "\n\r");
             }
         }
 
