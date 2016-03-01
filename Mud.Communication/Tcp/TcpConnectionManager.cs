@@ -14,20 +14,27 @@
 
         private bool started;
 
+        private readonly int port;
+
         private Socket serverSocket;
 
         public event Action<IConnection> UserConnected;
 
         public event Action<IConnection> UserDisconnected;
 
-        public void Start(int port)
+        public TcpConnectionManager(int port)
         {
-            if (this.started)
+            this.port = port;
+        }
+
+        public void Start()
+        {
+            if (started)
             {
                 return;
             }
 
-            this.started = true;
+            started = true;
 
             try
             {

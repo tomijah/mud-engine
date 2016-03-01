@@ -8,7 +8,7 @@
 
         event Action<IConnection> UserDisconnected;
 
-        void Start(int port);
+        void Start();
 
         void Stop();
     }

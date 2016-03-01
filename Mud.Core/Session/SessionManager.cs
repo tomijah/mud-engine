@@ -7,7 +7,7 @@
     using Mud.Common.Communication;
     using Mud.Core.Session.State;
 
-    public class SessionManager
+    public class SessionManager: IDisposable
     {
         private static SessionManager current;
 
@@ -21,6 +21,7 @@
             this.connectionManager = connectionManager;
             this.connectionManager.UserConnected += OnUserConnected;
             this.connectionManager.UserDisconnected += OnUserDisconnected;
+            this.connectionManager.Start();
         }
 
         public static SessionManager Current => current;
@@ -63,6 +64,19 @@
         private void OnMessageReceived(IConnection connection, string message)
         {
             GetSession(connection.Id)?.HandleMessage(message);
+        }
+
+        public void Dispose()
+        {
+            var allSessions = sessions.Values.ToArray();
+            foreach (var session in allSessions)
+            {
+                session.DisconnectUser("Server stopped");
+            }
+
+            connectionManager.Stop();
+            connectionManager.UserConnected -= OnUserConnected;
+            connectionManager.UserDisconnected -= OnUserDisconnected;
         }
     }
 }

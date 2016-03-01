@@ -1,30 +1,27 @@
 ﻿namespace Mud.Server
 {
     using System;
-    using System.Data;
 
     using Communication.Tcp;
-    using Common.Communication;
+    using Core.Session;
 
-    using Mud.Core.Ascii;
-    using Mud.Core.Session;
-
-    class Program
+    internal class Program
     {
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
-            var connections = new TcpConnectionManager();
-            var sessionManager = new SessionManager(connections);
-            connections.Start(4000);
-            while (true)
+            var connections = new TcpConnectionManager(4000);
+            using (var sessionManager = new SessionManager(connections))
             {
-                var message = Console.ReadLine();
-                if(message == "stop")
+                while (true)
                 {
-                    break;
-                }
+                    var message = Console.ReadLine();
+                    if (message == "stop")
+                    {
+                        break;
+                    }
 
-                sessionManager.Broadcast(message + "\n");
+                    sessionManager.Broadcast(message + "\n");
+                }
             }
         }
     }

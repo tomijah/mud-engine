@@ -1,14 +1,9 @@
 ﻿namespace Mud.Core.Session
 {
     using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    using System.Text;
-    using System.Threading.Tasks;
 
     using Mud.Common.Communication;
     using Mud.Core.Ascii;
-    using Mud.Core.Session.State;
 
     public class Session
     {
@@ -44,9 +39,9 @@
             currentState.Init(this);
         }
 
-        public void DisconnectUser()
+        public void DisconnectUser(string message = "See ya!")
         {
-            this.WriteToUser("See ya!");
+            WriteToUser(message);
             connection.Disconnect();
         }
     }
