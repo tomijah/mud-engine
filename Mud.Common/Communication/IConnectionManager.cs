@@ -11,7 +11,5 @@
         void Start(int port);
 
         void Stop();
-
-        void Broadcast(string message);
     }
 }

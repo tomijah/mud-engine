@@ -1,17 +1,21 @@
 ﻿namespace Mud.Server
 {
     using System;
+    using System.Data;
+
     using Communication.Tcp;
     using Common.Communication;
+
+    using Mud.Core.Ascii;
+    using Mud.Core.Session;
 
     class Program
     {
         static void Main(string[] args)
         {
             var connections = new TcpConnectionManager();
+            var sessionManager = new SessionManager(connections);
             connections.Start(4000);
-            connections.UserConnected += OnUserConnected;
-
             while (true)
             {
                 var message = Console.ReadLine();
@@ -20,18 +24,8 @@
                     break;
                 }
 
-                connections.Broadcast(message + "\n\r");
+                sessionManager.Broadcast(message + "\n");
             }
-        }
-
-        private static void MessageReceived(IConnection connection, string message)
-        {
-            Console.WriteLine(message);
-        }
-
-        private static void OnUserConnected(IConnection connection)
-        {
-            connection.MessageReceived += MessageReceived;
         }
     }
 }

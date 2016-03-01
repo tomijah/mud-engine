@@ -1,11 +1,10 @@
 ﻿namespace Mud.Core.Ascii
 {
-    using Common.Output;
     using System.Collections.Generic;
     using System.IO;
     using System.Text;
 
-    public class AsciiOutputParser : IOutputParser
+    public static class AsciiOutputParser
     {
         private const string Esc = "\x1B";
 
@@ -21,9 +20,11 @@
             Colors.Add('y', GetSequence(AnsiForegroundColor.Yellow, 0));
             Colors.Add('G', GetSequence(AnsiForegroundColor.Green, 1));
             Colors.Add('g', GetSequence(AnsiForegroundColor.Green, 0));
+            Colors.Add('B', GetSequence(AnsiForegroundColor.Blue, 1));
+            Colors.Add('b', GetSequence(AnsiForegroundColor.Blue, 0));
         }
 
-        public string Parse(string message)
+        public static string Parse(string message)
         {
             var sb = new StringBuilder();
             var sr = new StringReader(message);
@@ -40,7 +41,7 @@
                         }
                         else
                         {
-                            sb.Append(this.GetColor(buf[0]));
+                            sb.Append(GetColor(buf[0]));
                         }
                     }
                     else
@@ -62,7 +63,7 @@
             return string.Format("{0}[{2}m{0}[{1}m", Esc, (int)color, bright);
         }
 
-        private string GetColor(char input)
+        private static string GetColor(char input)
         {
             if (Colors.ContainsKey(input))
             {

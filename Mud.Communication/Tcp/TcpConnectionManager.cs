@@ -31,11 +31,11 @@
 
             try
             {
-                this.serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
                 var localIp = new IPEndPoint(IPAddress.Any, port);
-                this.serverSocket.Bind(localIp);
-                this.serverSocket.Listen(4);
-                this.serverSocket.BeginAccept(this.OnClientConnect, null);
+                serverSocket.Bind(localIp);
+                serverSocket.Listen(4);
+                serverSocket.BeginAccept(this.OnClientConnect, null);
             }
             catch (SocketException se)
             {
@@ -49,18 +49,9 @@
             }
         }
 
-        public void Broadcast(string message)
-        {
-            var tempConnections = new List<TcpConnection>(this.connections.Values);
-            foreach (TcpConnection conn in tempConnections)
-            {
-                conn.Send(message);
-            }
-        }
-
         public void Stop()
         {
-            this.serverSocket?.Close();
+            serverSocket?.Close();
 
             var tempConnections = new List<TcpConnection>(this.connections.Values);
             foreach (TcpConnection conn in tempConnections)
@@ -78,11 +69,11 @@
                 conn.Disconnected += this.OnClientDisconnected;
                 conn.StartListen();
 
-                this.connections.TryAdd(conn.Id, conn);
+                connections.TryAdd(conn.Id, conn);
 
-                this.UserConnected?.Invoke(conn);
+                UserConnected?.Invoke(conn);
 
-                this.serverSocket.BeginAccept(this.OnClientConnect, null);
+                serverSocket.BeginAccept(this.OnClientConnect, null);
             }
             catch (ObjectDisposedException)
             {
@@ -94,8 +85,8 @@
         private void OnClientDisconnected(IConnection sender)
         {
             TcpConnection removed;
-            this.connections.TryRemove(sender.Id, out removed);
-            this.UserDisconnected?.Invoke(sender);
+            connections.TryRemove(sender.Id, out removed);
+            UserDisconnected?.Invoke(sender);
         }
     }
 }

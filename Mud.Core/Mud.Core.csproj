@@ -44,6 +44,10 @@
     <Compile Include="Ascii\AnsiForegroundColor.cs" />
     <Compile Include="Ascii\AsciiOutputParser.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Session\Session.cs" />
+    <Compile Include="Session\SessionManager.cs" />
+    <Compile Include="Session\SessionStateBase.cs" />
+    <Compile Include="Session\State\ConnectedState.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Mud.Common\Mud.Common.csproj">

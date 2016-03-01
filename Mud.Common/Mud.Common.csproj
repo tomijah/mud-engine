@@ -43,7 +43,6 @@
     <Compile Include="Communication\IConnection.cs" />
     <Compile Include="Communication\IConnectionManager.cs" />
     <Compile Include="Extensions\ObjectExtensions.cs" />
-    <Compile Include="Output\IOutputParser.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
