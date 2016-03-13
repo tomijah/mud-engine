@@ -1,4 +1,6 @@
-﻿namespace Mud.Core.Session.State
+﻿using System;
+
+namespace Mud.Core.Session.State
 {
     public class ConnectedState : SessionStateBase
     {
@@ -9,8 +11,6 @@
                 session.DisconnectUser();
                 return;
             }
-
-            session.WriteToUser(">");
         }
 
         public override void HandleDisconnection(Session session)
@@ -22,7 +22,11 @@
         {
             session.WriteToUser("&RWelcome! " + session.Id);
             SessionManager.Current.Broadcast("Connected: " + session.Id);
-            session.WriteToUser(">");
+        }
+
+        public override string GetPrompt()
+        {
+            return ">";
         }
     }
 }

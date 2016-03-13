@@ -20,7 +20,7 @@
                         break;
                     }
 
-                    sessionManager.Broadcast(message + "\n");
+                    sessionManager.Broadcast(message);
                 }
             }
         }

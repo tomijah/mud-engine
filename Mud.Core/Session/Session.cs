@@ -30,7 +30,7 @@
 
         public void WriteToUser(string message)
         {
-            connection.Send(AsciiOutputParser.Parse($"{message}&W\n"));
+            connection.Send(AsciiOutputParser.Parse($"\n{message}&W\n{currentState.GetPrompt()}&W"));
         }
 
         public void SetState(SessionStateBase state)

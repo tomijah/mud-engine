@@ -7,5 +7,7 @@
         public abstract void HandleDisconnection(Session session);
 
         public abstract void Init(Session session);
+
+        public abstract string GetPrompt();
     }
 }
