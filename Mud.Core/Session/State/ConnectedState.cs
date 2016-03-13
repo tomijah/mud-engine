@@ -1,8 +1,6 @@
-﻿using System;
-
-namespace Mud.Core.Session.State
+﻿namespace Mud.Core.Session.State
 {
-    public class ConnectedState : SessionStateBase
+    public class ConnectedState : SessionState
     {
         public override void HandleMessage(Session session, string input)
         {
@@ -22,11 +20,6 @@ namespace Mud.Core.Session.State
         {
             session.WriteToUser("&RWelcome! " + session.Id);
             SessionManager.Current.Broadcast("Connected: " + session.Id);
-        }
-
-        public override string GetPrompt()
-        {
-            return ">";
         }
     }
 }

@@ -9,7 +9,9 @@
     {
         private readonly IConnection connection;
 
-        private SessionStateBase currentState;
+        private SessionState currentState;
+
+        private bool userAtPrompt;
 
         public Session(IConnection connection)
         {
@@ -20,7 +22,13 @@
 
         public void HandleMessage(string message)
         {
+            userAtPrompt = false;
             currentState.HandleMessage(this, message);
+            if (!userAtPrompt)
+            {
+                connection.Send(AsciiOutputParser.Parse($"{currentState.GetPrompt()}&W"));
+                userAtPrompt = true;
+            }
         }
 
         public void HandleUserDisconnected()
@@ -28,12 +36,21 @@
             currentState.HandleDisconnection(this);
         }
 
-        public void WriteToUser(string message)
+        public void WriteToUser(string message, bool withPrompt = true)
         {
-            connection.Send(AsciiOutputParser.Parse($"\n{message}&W\n{currentState.GetPrompt()}&W"));
+            if (withPrompt)
+            {
+                connection.Send(AsciiOutputParser.Parse($"\n{message}&W{Environment.NewLine}{currentState.GetPrompt()}&W"));
+            }
+            else
+            {
+                connection.Send(AsciiOutputParser.Parse($"\n{message}&W"));
+            }
+
+            userAtPrompt = withPrompt;
         }
 
-        public void SetState(SessionStateBase state)
+        public void SetState(SessionState state)
         {
             currentState = state;
             currentState.Init(this);
@@ -41,7 +58,7 @@
 
         public void DisconnectUser(string message = "See ya!")
         {
-            WriteToUser(message);
+            WriteToUser(message, false);
             connection.Disconnect();
         }
     }
