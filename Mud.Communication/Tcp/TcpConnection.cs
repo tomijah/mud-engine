@@ -1,154 +1,224 @@
-﻿namespace Mud.Communication.Tcp
+namespace Mud.Communication.Tcp
 {
-    using Common.Communication;
     using System;
+    using System.Collections.Generic;
     using System.Net;
     using System.Net.Sockets;
     using System.Text;
     using System.Threading;
+    using System.Threading.Channels;
+    using System.Threading.Tasks;
 
-    public class TcpConnection : IConnection
+    using Mud.Common.Communication;
+
+    /// <summary>
+    /// TCP connection with buffered async reads, a serialized outbound send
+    /// queue (no overlapping sends), slow-client backpressure, and idempotent
+    /// disconnect handling.
+    /// </summary>
+    public sealed class TcpConnection : IConnection
     {
+        private const int ReceiveBufferSize = 4096;
+
+        private const int MaxCommandLength = MessageBuffer.DefaultMaxMessageLength;
+
+        private const int IncomingQueueCapacity = 64;
+
+        private const int OutgoingQueueCapacity = 256;
+
+        private static readonly TimeSpan DisconnectFlushTimeout = TimeSpan.FromSeconds(2);
+
         private readonly Socket socket;
 
-        private readonly byte[] buffer;
+        private readonly Channel<string> incoming;
 
-        private readonly MessageBuffer messageBuffer;
+        private readonly Channel<string> outgoing;
 
-        private bool connected;
+        private readonly CancellationTokenSource cts;
+
+        private int disconnectRequested;
+
+        private Task sendLoop;
 
         public TcpConnection(Socket socket)
         {
             var remoteEndPoint = (IPEndPoint)socket.RemoteEndPoint;
             this.Id = Guid.NewGuid();
-            this.socket = socket;
-            this.buffer = new byte[1];
-            this.connected = true;
             this.Ip = remoteEndPoint.Address;
-            this.messageBuffer = new MessageBuffer();
-            this.messageBuffer.Message += this.OnMessage;
+            this.socket = socket;
+            this.cts = new CancellationTokenSource();
+
+            this.incoming = Channel.CreateBounded<string>(new BoundedChannelOptions(IncomingQueueCapacity)
+            {
+                SingleReader = true,
+                SingleWriter = true,
+            });
+
+            this.outgoing = Channel.CreateBounded<string>(new BoundedChannelOptions(OutgoingQueueCapacity)
+            {
+                SingleReader = true,
+                SingleWriter = false,
+            });
         }
 
-        public event Action<IConnection, string> MessageReceived;
+        /// <summary>
+        /// Raised exactly once, after the socket is fully closed.
+        /// </summary>
+        public event Action<TcpConnection> Closed;
 
-        public event Action<IConnection> Disconnected;
+        public Guid Id { get; }
 
-        public IPAddress Ip { get; private set; }
+        public IPAddress Ip { get; }
 
-        public Guid Id { get; private set; }
+        public ChannelReader<string> IncomingMessages => this.incoming.Reader;
 
-        public void StartListen()
+        public void Start()
         {
-            this.Listen();
+            this.sendLoop = Task.Run(this.SendLoopAsync);
+            _ = Task.Run(this.ReceiveLoopAsync);
         }
 
-        public void Disconnect()
+        public ValueTask SendAsync(string message, CancellationToken cancellationToken = default)
         {
-            this.OnConnectionDisconnect();
+            if (message == null)
+            {
+                throw new ArgumentNullException(nameof(message));
+            }
+
+            if (!this.outgoing.Writer.TryWrite(message))
+            {
+                // Backpressure policy: the outbound queue is full, which means the
+                // client is not reading fast enough. Disconnect instead of buffering
+                // without bound. (TryWrite also fails once the channel is completed,
+                // in which case DisconnectAsync is a no-op.)
+                return this.DisconnectAsync("You are receiving data too slowly.", cancellationToken);
+            }
+
+            return ValueTask.CompletedTask;
         }
 
-        public void Send(string message)
+        public ValueTask DisconnectAsync(string reason = null, CancellationToken cancellationToken = default)
         {
-            this.Send(Encoding.GetEncoding(437).GetBytes(message));
+            if (Interlocked.Exchange(ref this.disconnectRequested, 1) != 0)
+            {
+                return ValueTask.CompletedTask;
+            }
+
+            if (!string.IsNullOrEmpty(reason))
+            {
+                this.outgoing.Writer.TryWrite($"\r\n{reason}\r\n");
+            }
+
+            // Completing the writers ends both loops: the send loop drains what is
+            // already queued, the session sees the incoming channel complete.
+            this.outgoing.Writer.TryComplete();
+            this.incoming.Writer.TryComplete();
+
+            _ = Task.Run(this.CloseAsync);
+            return ValueTask.CompletedTask;
         }
 
-        private void Send(byte[] data)
+        private async Task CloseAsync()
         {
+            if (this.sendLoop != null)
+            {
+                // Give queued output a moment to flush, then cut off hung sends.
+                await Task.WhenAny(this.sendLoop, Task.Delay(DisconnectFlushTimeout)).ConfigureAwait(false);
+            }
+
+            this.cts.Cancel();
+
             try
             {
-                this.socket.BeginSend(data, 0, data.Length, 0, this.OnSendComplete, null);
+                this.socket.Shutdown(SocketShutdown.Both);
             }
-            catch
+            catch (SocketException)
             {
-                this.OnConnectionDisconnect();
-            }
-        }
-
-        private void Listen()
-        {
-            try
-            {
-                this.socket.BeginReceive(this.buffer, 0, this.buffer.Length, SocketFlags.None, this.OnDataReceived, null);
-            }
-            catch
-            {
-                this.OnConnectionDisconnect();
-            }
-        }
-
-        private void OnMessage(string message)
-        {
-            this.MessageReceived?.Invoke(this, message);
-        }
-
-        private void OnDataReceived(IAsyncResult asyncResult)
-        {
-            try
-            {
-                if (this.socket.Connected)
-                {
-                    int bytesCount = this.socket.EndReceive(asyncResult);
-
-                    if (bytesCount == 0)
-                    {
-                        this.OnConnectionDisconnect();
-                    }
-                    else
-                    {
-                        if (this.buffer.Length > 0)
-                        {
-                            this.messageBuffer.Push(this.buffer);
-                        }
-
-                        this.Listen();
-                    }
-                }
             }
             catch (ObjectDisposedException)
             {
-                this.OnConnectionDisconnect();
             }
-            catch (ThreadAbortException)
-            {
-                this.OnConnectionDisconnect();
-            }
-            catch (Exception ex)
-            {
-                var socketEx = ex as SocketException;
-                var connectionReset = socketEx != null && socketEx.SocketErrorCode == SocketError.ConnectionReset;
-                if (!connectionReset)
-                {
-                    // TODO: log connection error
-                }
 
-                this.OnConnectionDisconnect();
-            }
+            this.socket.Close();
+            this.cts.Dispose();
+            this.Closed?.Invoke(this);
         }
 
-        private void OnSendComplete(IAsyncResult asyncResult)
+        private async Task ReceiveLoopAsync()
+        {
+            var buffer = new byte[ReceiveBufferSize];
+            var messageBuffer = new MessageBuffer(MaxCommandLength);
+
+            try
+            {
+                while (!this.cts.Token.IsCancellationRequested)
+                {
+                    int received = await this.socket.ReceiveAsync(buffer, SocketFlags.None, this.cts.Token).ConfigureAwait(false);
+                    if (received == 0)
+                    {
+                        break;
+                    }
+
+                    IReadOnlyList<string> messages;
+                    try
+                    {
+                        messages = messageBuffer.Append(buffer, received);
+                    }
+                    catch (MessageTooLongException)
+                    {
+                        await this.DisconnectAsync("Command too long.").ConfigureAwait(false);
+                        return;
+                    }
+
+                    foreach (var message in messages)
+                    {
+                        // Bounded write: pauses reading from the socket when the
+                        // session falls behind instead of queueing without limit.
+                        await this.incoming.Writer.WriteAsync(message, this.cts.Token).ConfigureAwait(false);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (ChannelClosedException)
+            {
+            }
+            catch (SocketException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
+            await this.DisconnectAsync().ConfigureAwait(false);
+        }
+
+        private async Task SendLoopAsync()
         {
             try
             {
-                this.socket.EndSend(asyncResult);
+                await foreach (var message in this.outgoing.Reader.ReadAllAsync(this.cts.Token).ConfigureAwait(false))
+                {
+                    var data = Encoding.Latin1.GetBytes(message);
+                    int sent = 0;
+                    while (sent < data.Length)
+                    {
+                        sent += await this.socket.SendAsync(data.AsMemory(sent), SocketFlags.None, this.cts.Token).ConfigureAwait(false);
+                    }
+                }
             }
-            catch
+            catch (OperationCanceledException)
             {
-                this.OnConnectionDisconnect();
             }
-        }
+            catch (SocketException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
 
-        private void OnConnectionDisconnect()
-        {
-            if (this.socket.Connected)
-            {
-                this.socket.Shutdown(SocketShutdown.Both);
-                this.socket.Close();
-            }
-            if (this.connected)
-            {
-                this.connected = false;
-                this.Disconnected?.Invoke(this);
-            }
+            await this.DisconnectAsync().ConfigureAwait(false);
         }
     }
 }

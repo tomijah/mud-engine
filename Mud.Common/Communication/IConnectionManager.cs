@@ -1,12 +1,10 @@
-﻿namespace Mud.Common.Communication
+namespace Mud.Common.Communication
 {
     using System;
 
     public interface IConnectionManager
     {
-        event Action<IConnection> UserConnected;
-
-        event Action<IConnection> UserDisconnected;
+        event Action<IConnection> ConnectionAccepted;
 
         void Start();
 

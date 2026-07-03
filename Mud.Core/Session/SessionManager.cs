@@ -1,82 +1,78 @@
-﻿namespace Mud.Core.Session
+namespace Mud.Core.Session
 {
     using System;
     using System.Collections.Concurrent;
-    using System.Linq;
+    using System.Threading.Tasks;
 
     using Mud.Common.Communication;
-    using Mud.Core.Session.State;
 
-    public class SessionManager: IDisposable
+    public class SessionManager : IDisposable
     {
-        private static SessionManager current;
-
         private readonly IConnectionManager connectionManager;
+
+        private readonly GameContext context;
 
         private readonly ConcurrentDictionary<Guid, Session> sessions = new ConcurrentDictionary<Guid, Session>();
 
-        public SessionManager(IConnectionManager connectionManager)
+        public SessionManager(IConnectionManager connectionManager, GameContext context)
         {
-            current = this;
-            this.connectionManager = connectionManager;
-            this.connectionManager.UserConnected += OnUserConnected;
-            this.connectionManager.UserDisconnected += OnUserDisconnected;
-            this.connectionManager.Start();
+            this.connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
+            this.context = context ?? throw new ArgumentNullException(nameof(context));
+            this.connectionManager.ConnectionAccepted += OnConnectionAccepted;
         }
 
-        public static SessionManager Current => current;
-
-        public Session GetSession(Guid id)
+        public void Start()
         {
-            Session result;
-            return sessions.TryGetValue(id, out result) ? result : null;
+            connectionManager.Start();
         }
 
+        /// <summary>
+        /// Server-wide announcement to every session, including those not yet
+        /// in the world (e.g. still at the name prompt).
+        /// </summary>
         public void Broadcast(string message)
         {
-            var all = sessions.Values.ToArray();
-            foreach (var session in all)
+            foreach (var session in sessions.Values)
             {
-                session.WriteToUser(message);
+                session.SendMessage(message);
             }
-        }
-
-        private void OnUserDisconnected(IConnection connection)
-        {
-            Session removed;
-            if (sessions.TryRemove(connection.Id, out removed))
-            {
-                connection.MessageReceived -= OnMessageReceived;
-                removed.HandleUserDisconnected();
-            }
-        }
-
-        private void OnUserConnected(IConnection connection)
-        {
-            var session = new Session(connection);
-            if (sessions.TryAdd(connection.Id, session))
-            {
-                connection.MessageReceived += OnMessageReceived;
-                session.SetState(new ConnectedState());
-            }
-        }
-
-        private void OnMessageReceived(IConnection connection, string message)
-        {
-            GetSession(connection.Id)?.HandleMessage(message);
         }
 
         public void Dispose()
         {
-            var allSessions = sessions.Values.ToArray();
-            foreach (var session in allSessions)
+            connectionManager.ConnectionAccepted -= OnConnectionAccepted;
+
+            foreach (var session in sessions.Values)
             {
                 session.DisconnectUser("Server stopped");
             }
 
             connectionManager.Stop();
-            connectionManager.UserConnected -= OnUserConnected;
-            connectionManager.UserDisconnected -= OnUserDisconnected;
+        }
+
+        private void OnConnectionAccepted(IConnection connection)
+        {
+            var session = new Session(connection, context);
+            if (sessions.TryAdd(session.Id, session))
+            {
+                _ = RunSessionAsync(session);
+            }
+        }
+
+        private async Task RunSessionAsync(Session session)
+        {
+            try
+            {
+                await session.RunAsync().ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // TODO: log; a crashed session must not take the server down.
+            }
+            finally
+            {
+                sessions.TryRemove(session.Id, out _);
+            }
         }
     }
 }

@@ -1,99 +1,120 @@
-﻿namespace Mud.Communication.Tcp
+namespace Mud.Communication.Tcp
 {
-    using Common.Communication;
     using System;
     using System.Collections.Concurrent;
-    using System.Collections.Generic;
     using System.Net;
     using System.Net.Sockets;
+    using System.Threading;
+    using System.Threading.Tasks;
 
-    public class TcpConnectionManager: IConnectionManager
+    using Mud.Common.Communication;
+
+    public sealed class TcpConnectionManager : IConnectionManager
     {
-        private readonly ConcurrentDictionary<Guid, TcpConnection> connections =
-            new ConcurrentDictionary<Guid, TcpConnection>();
-
-        private bool started;
+        private const int AcceptBacklog = 512;
 
         private readonly int port;
 
+        private readonly ConcurrentDictionary<Guid, TcpConnection> connections =
+            new ConcurrentDictionary<Guid, TcpConnection>();
+
         private Socket serverSocket;
 
-        public event Action<IConnection> UserConnected;
+        private CancellationTokenSource cts;
 
-        public event Action<IConnection> UserDisconnected;
+        private bool started;
 
         public TcpConnectionManager(int port)
         {
             this.port = port;
         }
 
+        public event Action<IConnection> ConnectionAccepted;
+
         public void Start()
         {
-            if (started)
+            if (this.started)
             {
                 return;
             }
 
-            started = true;
+            this.started = true;
 
             try
             {
-                serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                var localIp = new IPEndPoint(IPAddress.Any, port);
-                serverSocket.Bind(localIp);
-                serverSocket.Listen(4);
-                serverSocket.BeginAccept(this.OnClientConnect, null);
+                this.serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                this.serverSocket.Bind(new IPEndPoint(IPAddress.Any, this.port));
+                this.serverSocket.Listen(AcceptBacklog);
             }
             catch (SocketException se)
             {
-                if (se.ErrorCode == 10048)
+                if (se.SocketErrorCode == SocketError.AddressAlreadyInUse)
                 {
-                    string message = string.Format(PortInUseException.MessageFormat, se.ErrorCode, se.Message, port);
+                    string message = string.Format(PortInUseException.MessageFormat, se.ErrorCode, se.Message, this.port);
                     throw new PortInUseException(message);
                 }
 
                 throw;
             }
+
+            this.cts = new CancellationTokenSource();
+            _ = Task.Run(this.AcceptLoopAsync);
         }
 
         public void Stop()
         {
-            serverSocket?.Close();
-
-            var tempConnections = new List<TcpConnection>(this.connections.Values);
-            foreach (TcpConnection conn in tempConnections)
+            if (!this.started)
             {
-                conn.Disconnect();
+                return;
+            }
+
+            this.cts?.Cancel();
+            this.serverSocket?.Close();
+
+            foreach (var connection in this.connections.Values)
+            {
+                _ = connection.DisconnectAsync("Server is shutting down.");
             }
         }
 
-        private void OnClientConnect(IAsyncResult asyncResult)
+        private async Task AcceptLoopAsync()
         {
-            try
+            while (!this.cts.Token.IsCancellationRequested)
             {
-                Socket socket = this.serverSocket.EndAccept(asyncResult);
-                var conn = new TcpConnection(socket);
-                conn.Disconnected += this.OnClientDisconnected;
-                conn.StartListen();
+                Socket clientSocket;
+                try
+                {
+                    clientSocket = await this.serverSocket.AcceptAsync(this.cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (ObjectDisposedException)
+                {
+                    break;
+                }
+                catch (SocketException)
+                {
+                    // A single failed accept (e.g. client reset during handshake)
+                    // should not take down the accept loop.
+                    continue;
+                }
 
-                connections.TryAdd(conn.Id, conn);
+                clientSocket.NoDelay = true;
 
-                UserConnected?.Invoke(conn);
+                var connection = new TcpConnection(clientSocket);
+                connection.Closed += this.OnConnectionClosed;
+                this.connections.TryAdd(connection.Id, connection);
+                connection.Start();
 
-                serverSocket.BeginAccept(this.OnClientConnect, null);
-            }
-            catch (ObjectDisposedException)
-            {
-                // This exception was preventing the console from closing when the
-                // shutdown command was issued.
+                this.ConnectionAccepted?.Invoke(connection);
             }
         }
 
-        private void OnClientDisconnected(IConnection sender)
+        private void OnConnectionClosed(TcpConnection connection)
         {
-            TcpConnection removed;
-            connections.TryRemove(sender.Id, out removed);
-            UserDisconnected?.Invoke(sender);
+            this.connections.TryRemove(connection.Id, out _);
         }
     }
 }

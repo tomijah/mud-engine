@@ -1,50 +1,103 @@
-﻿namespace Mud.Communication
+namespace Mud.Communication
 {
     using System;
+    using System.Collections.Generic;
     using System.Text;
 
-    public class MessageBuffer
+    /// <summary>
+    /// Accumulates raw bytes from the socket and splits them into complete
+    /// line-terminated commands. Handles CRLF/LF/CR line endings, multiple
+    /// commands per packet, and partial commands across packets. Non-printable
+    /// bytes (including telnet negotiation) are ignored.
+    /// </summary>
+    public sealed class MessageBuffer
     {
-        public const string NewLineMarker = "\r";
+        public const int DefaultMaxMessageLength = 512;
 
-        private readonly StringBuilder sb;
+        private static readonly IReadOnlyList<string> NoMessages = Array.Empty<string>();
 
-        public MessageBuffer()
+        private readonly int maxMessageLength;
+
+        private readonly StringBuilder current = new StringBuilder();
+
+        private bool skipNextLineFeed;
+
+        public MessageBuffer(int maxMessageLength = DefaultMaxMessageLength)
         {
-            this.sb = new StringBuilder();
-        }
+            if (maxMessageLength <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxMessageLength));
+            }
 
-        public event Action<string> Message;
+            this.maxMessageLength = maxMessageLength;
+        }
 
         /// <summary>
-        /// Only 1 element array should be passed
+        /// Appends received bytes and returns all commands completed by them.
+        /// Throws <see cref="MessageTooLongException"/> when a single command
+        /// exceeds the configured maximum length.
         /// </summary>
-        /// <param name="data">Data (1 element byte array)</param>
-        public void Push(byte[] data)
+        public IReadOnlyList<string> Append(byte[] data, int count)
         {
-            string input = Encoding.ASCII.GetString(data);
-            input = input.Replace("\n", NewLineMarker);
-            this.sb.Append(input);
+            if (data == null)
+            {
+                throw new ArgumentNullException(nameof(data));
+            }
 
-            this.CheckMessage();
+            if (count < 0 || count > data.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(count));
+            }
+
+            List<string> messages = null;
+
+            for (int i = 0; i < count; i++)
+            {
+                var c = (char)data[i];
+
+                if (c == '\n')
+                {
+                    if (this.skipNextLineFeed)
+                    {
+                        // Second half of a CRLF pair; the CR already completed the line.
+                        this.skipNextLineFeed = false;
+                        continue;
+                    }
+
+                    this.CompleteLine(ref messages);
+                }
+                else if (c == '\r')
+                {
+                    this.skipNextLineFeed = true;
+                    this.CompleteLine(ref messages);
+                }
+                else
+                {
+                    this.skipNextLineFeed = false;
+
+                    if (c < ' ' || c > '~')
+                    {
+                        continue;
+                    }
+
+                    if (this.current.Length >= this.maxMessageLength)
+                    {
+                        this.current.Clear();
+                        throw new MessageTooLongException(this.maxMessageLength);
+                    }
+
+                    this.current.Append(c);
+                }
+            }
+
+            return messages ?? NoMessages;
         }
 
-        private void CheckMessage()
+        private void CompleteLine(ref List<string> messages)
         {
-            var buff = this.sb.ToString();
-            if (buff.Contains(NewLineMarker))
-            {
-                this.OnMessage(buff.Replace(NewLineMarker, string.Empty));
-                this.sb.Clear();
-            }
-        }
-
-        private void OnMessage(string message)
-        {
-            if (this.Message != null)
-            {
-                this.Message(message);
-            }
+            messages = messages ?? new List<string>();
+            messages.Add(this.current.ToString());
+            this.current.Clear();
         }
     }
 }
