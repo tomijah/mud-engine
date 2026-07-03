@@ -1,17 +1,17 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.24720.0
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mud.Communication", "Mud.Communication\Mud.Communication.csproj", "{692B0095-AC1F-4A97-A432-7C484EDBAB50}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Mud.Communication", "Mud.Communication\Mud.Communication.csproj", "{692B0095-AC1F-4A97-A432-7C484EDBAB50}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mud.Common", "Mud.Common\Mud.Common.csproj", "{0DB2B3FA-9D93-4176-BE25-2EE31D436713}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Mud.Common", "Mud.Common\Mud.Common.csproj", "{0DB2B3FA-9D93-4176-BE25-2EE31D436713}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mud.Tests", "Mud.Tests\Mud.Tests.csproj", "{32FD3A83-12E2-4E45-9C7F-2DC608A468D4}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Mud.Tests", "Mud.Tests\Mud.Tests.csproj", "{32FD3A83-12E2-4E45-9C7F-2DC608A468D4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mud.Core", "Mud.Core\Mud.Core.csproj", "{3656E20F-2F50-41D5-B265-281809388F9A}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Mud.Core", "Mud.Core\Mud.Core.csproj", "{3656E20F-2F50-41D5-B265-281809388F9A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mud.Server", "Mud.Server\Mud.Server.csproj", "{1EE3119B-5F19-4227-A3B4-78C7781ADA6C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Mud.Server", "Mud.Server\Mud.Server.csproj", "{1EE3119B-5F19-4227-A3B4-78C7781ADA6C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

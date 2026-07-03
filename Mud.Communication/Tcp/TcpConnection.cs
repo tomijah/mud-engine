@@ -1,7 +1,6 @@
 ﻿namespace Mud.Communication.Tcp
 {
     using Common.Communication;
-    using Common.Extensions;
     using System;
     using System.Net;
     using System.Net.Sockets;
@@ -115,7 +114,7 @@
             }
             catch (Exception ex)
             {
-                var socketEx = ex.CastTo<SocketException>();
+                var socketEx = ex as SocketException;
                 var connectionReset = socketEx != null && socketEx.SocketErrorCode == SocketError.ConnectionReset;
                 if (!connectionReset)
                 {
